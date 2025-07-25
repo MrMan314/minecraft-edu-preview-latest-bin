@@ -1,0 +1,268 @@
+#!/bin/bash
+
+HEADER=`mktemp`
+
+curl https://aka.ms/downloadmee-winStoreBeta -sILo $HEADER
+VERSION=`sed -rn "s/(Location:.*)(Minecraft.*)(\\.appxbundle.*)/\\2/p" < $HEADER`
+FULL_SIZE=`sed -rn "s/(content-length: )(.*)/\\2/p" < $HEADER | tr -d '\r'`
+DOWNLOAD=`sed -rn "s/(Location: )(.*)/\\2/p" < $HEADER | tr -d '\r'`
+
+rm $HEADER
+
+TAIL=`mktemp`
+
+curl -sL --range -65536 -0 $DOWNLOAD -o $TAIL
+
+COMPRESS_SIZE=`python3 -c "import zipfile,io
+with open('$TAIL','rb') as f:z=zipfile.ZipFile(io.BytesIO(f.read()))
+for i in z.infolist():
+    if 'x64' in i.filename: print(i.compress_size)"`
+
+echo $COMPRESS_SIZE
+
+OFFSET=`python3 -c "import zipfile,io
+with open('$TAIL','rb') as f:z=zipfile.ZipFile(io.BytesIO(f.read()))
+for i in z.infolist():
+    if 'x64' in i.filename: print(${FULL_SIZE}+i.header_offset-65536)"`
+
+echo $OFFSET
+rm $TAIL
+
+FILE_OFFSET=`curl -sL --range $(( 26 + $OFFSET ))-$(( 29 + $OFFSET )) $DOWNLOAD | python3 -c "import sys;data=sys.stdin.buffer.read(4);print(data[0]+data[2]+((data[1]+data[3])<<8)+30+$OFFSET)"`
+
+echo $FILE_OFFSET
+
+mkdir -p $VERSION
+cd $VERSION
+
+curl -sL --range $FILE_OFFSET-$(( $FILE_OFFSET+$COMPRESS_SIZE )) $DOWNLOAD | bsdtar -xvf -
+
+cat << EOF | git apply -
+diff --git a/Minecraft.Windows.exe b/Minecraft.Windows.exe
+old mode 100644
+new mode 100755
+diff --git a/data/resource_packs/education/contents.json b/data/resource_packs/education/contents.json
+index 68a592f1..741eb4b3 100644
+--- a/data/resource_packs/education/contents.json
++++ b/data/resource_packs/education/contents.json
+@@ -126,6 +126,12 @@
+         {
+             "path": "textures/items/photo.png"
+         },
++        {
++            "path": "textures/0.png"
++        },
++        {
++            "path": "textures/1.png"
++        },
+         {
+             "path": "textures/ui/animation_code_shuffle0.png"
+         },
+@@ -582,6 +588,12 @@
+         {
+             "path": "ui/multiplayer_lesson_screen.json"
+         },
++        {
++            "path": "ui/debug_screen.json"
++        },
++        {
++            "path": "ui/ui_screen.json"
++        },
+         {
+             "path": "ui/_ui_defs.json"
+         }
+diff --git a/data/resource_packs/education/ui/_ui_defs.json b/data/resource_packs/education/ui/_ui_defs.json
+index c1cb5c94..491f3f82 100644
+--- a/data/resource_packs/education/ui/_ui_defs.json
++++ b/data/resource_packs/education/ui/_ui_defs.json
+@@ -15,6 +15,7 @@
+     "ui/joincode_entry_screen.json",
+     "ui/library_item_screen.json",
+     "ui/library_screen.json",
+-    "ui/multiplayer_lesson_screen.json"
++    "ui/multiplayer_lesson_screen.json",
++    "ui/ui_screen.json"
+   ]
+ }
+diff --git a/data/resource_packs/education/ui/debug_screen.json b/data/resource_packs/education/ui/debug_screen.json
+new file mode 100755
+index 00000000..47088446
+--- /dev/null
++++ b/data/resource_packs/education/ui/debug_screen.json
+@@ -0,0 +1,66 @@
++{
++  "namespace": "debug_screen",
++
++  "access_button@common_buttons.light_content_button": {
++    "\$pressed_button_name": "button.access",
++    "size": [ 5, 5 ],
++    "offset": [ 5, 5 ],
++    "anchor_to": "top_right",
++    "anchor_from": "top_right",
++    "focus_enabled": false,
++    "bindings": [
++      {
++        "binding_name": "#access_screen_visible",
++        "binding_name_override": "#visible"
++      }
++    ]
++  },
++
++  "special_render": {
++   "ignored": false,
++    "type": "custom",
++    "renderer": "debug_screen_renderer"
++  },
++
++  "content_panel": {
++    "type": "panel",
++    "clips_children": false,
++    "size": [ "100%", "100%" ],
++    "controls": [
++      {
++        "access_button@debug_screen.access_button": {
++        }
++      },
++      {
++        "special_render@debug_screen.special_render": {
++        }
++      },
++      {
++        "exit@ui.auxiliary_2_button": {
++          "ignored": "(not \$is_pregame)",
++          "\$button_text": "",
++          "offset": [ 0, 0 ],
++          "\$button_content": "button.menu_exit"
++        }
++      }
++    ]
++  },
++
++
++
++  "debug_screen@common.base_screen": {
++    "send_telemetry": false,
++    "screen_not_flushable": true,
++    "render_game_behind": true,
++    "is_showing_menu": false,
++    "low_frequency_rendering": true,
++    "is_modal": true,
++    "should_steal_mouse": false,
++    "render_only_when_topmost": false,
++    "screen_draws_last": true,
++    "always_accepts_input": true,
++    "\$screen_content": "debug_screen.content_panel",
++    "\$screen_animations": [],
++    "\$use_loading_bars": false
++  }
++}
+diff --git a/data/resource_packs/education/ui/ui_screen.json b/data/resource_packs/education/ui/ui_screen.json
+new file mode 100755
+index 00000000..630868e3
+--- /dev/null
++++ b/data/resource_packs/education/ui/ui_screen.json
+@@ -0,0 +1,98 @@
++{
++  "namespace": "ui",
++
++  "auxiliary_2_button@ui.auxiliary_2_text_panel": {
++    "size": [ 25, 25 ],
++    "anchor_from": "top_right",
++    "anchor_to": "top_right",
++    "\$pressed_button_name": "\$button_content"
++  },
++
++  "button_label_text": {
++    "type": "label",
++    "color": "\$main_header_text_color",
++    "layer": 4,
++    "text": "\$button_text",
++    "font_type": "smooth",
++    "offset": [ 0, 0 ],
++    "font_scale_factor": 0.5,
++    "anchor_from": "center",
++    "anchor_to": "center"
++  },
++
++  "auxiliary_2_text_panel@common.button": {
++    "controls": [
++      {
++        "button_label_text@ui.button_label_text": {
++        }
++      },
++      {
++        "default@common.close_button_panel": {
++          "\$close_button_texture": "textures/0"
++        }
++      },
++      {
++        "hover@common.close_button_panel": {
++          "\$close_button_texture": "textures/1"
++        }
++      },
++      {
++        "pressed@common.close_button_panel": {
++          "\$close_button_texture": "textures/1"
++        }
++      }
++    ]
++  },
++
++  "auxiliary_debug_button@ui.auxiliary_text_panel": {
++    "size": [ 40, 40 ],
++    "anchor_from": "top_right",
++    "anchor_to": "top_right",
++    "\$a": 0.5,
++    "\$pressed_button_name": "\$button_content"
++  },
++
++  "auxiliary_button@ui.auxiliary_text_panel": {
++    "size": [ 40, 40 ],
++    "anchor_from": "top_right",
++    "anchor_to": "top_right",
++    "\$a": 1.5,
++    "\$pressed_button_name": "\$button_content"
++  },
++
++  "button_label_text": {
++    "type": "label",
++    "color": "\$main_header_text_color",
++    "layer": 4,
++    "text": "\$button_text",
++    "font_type": "smooth",
++    "offset": [ 0, 0 ],
++    "font_scale_factor": "\$a",
++    "anchor_from": "center",
++    "anchor_to": "center"
++  },
++
++  "auxiliary_text_panel@common.button": {
++    "controls": [
++      {
++        "button_label_text@ui.button_label_text": {
++        }
++      },
++      {
++        "default@common.close_button_panel": {
++          "\$close_button_texture": "textures/0"
++        }
++      },
++      {
++        "hover@common.close_button_panel": {
++          "\$close_button_texture": "textures/1"
++        }
++      },
++      {
++        "pressed@common.close_button_panel": {
++          "\$close_button_texture": "textures/1"
++        }
++      }
++    ]
++  }
++}
+EOF
+
+:>data/profanity_filter.wlist
+echo iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII= | base64 -d > data/resource_packs/education/textures/0.png
+curl https://bluemoji.io/cdn-proxy/646218c67da47160c64a84d5/66b3eb4819f48592fa6efc03_41.png -o $VERSION/data/resource_packs/education/textures/1.png
+exit

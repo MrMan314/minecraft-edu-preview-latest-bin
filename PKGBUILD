@@ -5,7 +5,7 @@ pkgver=1.21.51.0
 pkgrel=1
 pkgdesc='Minecraft Education Edition Preview'
 license=('LicenseRef-nonfree-and-unredistributable')
-depends=(
+makedepends=(
 	'curl'
 	'git'
 	'libarchive'
@@ -38,21 +38,11 @@ package() {
 
 	TAIL=`mktemp`
 
-	curl -sL --range -65536 -0 $DOWNLOAD -o $TAIL
-
-	COMPRESS_SIZE=`python3 -c "import zipfile,io
-with open('$TAIL','rb') as f:z=zipfile.ZipFile(io.BytesIO(f.read()))
+	declare `curl -sL --range -65536 -0 $DOWNLOAD | python3 -c "import zipfile,io,sys
+z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read(65536)))
 for i in z.infolist():
-	if 'x64' in i.filename: print(i.compress_size)"`
+	if 'x64' in i.filename: print(f'COMPRESS_SIZE={i.compress_size} OFFSET={${FULL_SIZE}+i.header_offset-65536}')"`
 
-	echo $COMPRESS_SIZE
-
-	OFFSET=`python3 -c "import zipfile,io
-with open('$TAIL','rb') as f:z=zipfile.ZipFile(io.BytesIO(f.read()))
-for i in z.infolist():
-	if 'x64' in i.filename: print(${FULL_SIZE}+i.header_offset-65536)"`
-
-	echo $OFFSET
 	rm $TAIL
 
 	FILE_OFFSET=`curl -sL --range $(( 26 + $OFFSET ))-$(( 29 + $OFFSET )) $DOWNLOAD | python3 -c "import sys;data=sys.stdin.buffer.read(4);print(data[0]+data[2]+((data[1]+data[3])<<8)+30+$OFFSET)"`
@@ -62,7 +52,7 @@ for i in z.infolist():
 	mkdir -p $pkgdir/opt/MinecraftEducationPreview_$pkgver
 	cd $pkgdir/opt/MinecraftEducationPreview_$pkgver
 
-	curl -sL --range $FILE_OFFSET-$(( $FILE_OFFSET+$COMPRESS_SIZE )) $DOWNLOAD | bsdtar -xvf -
+	curl -sL --range $FILE_OFFSET-$(( $FILE_OFFSET + $COMPRESS_SIZE )) $DOWNLOAD | bsdtar -xvf -
 
 	git apply $srcdir/login_fix.patch
 		
