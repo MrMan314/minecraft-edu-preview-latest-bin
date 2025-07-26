@@ -1,6 +1,6 @@
 # minecraft-education-preview-latest
 
-Minecraft Education Edition Preview as an AUR package.  For non-arch users, run `download` or `download_pkg`(has the singular asset concatenated at the end) to install.
+Minecraft Education Edition Preview as an AUR package.  For non-arch users, run `download` to install.
 Patched to avoid login issues on WINE.
 
 ## Prerequisites:
